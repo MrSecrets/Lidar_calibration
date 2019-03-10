@@ -11,7 +11,7 @@
 #include <pcl/common/centroid.h>
 //#include <pcl/ros/conversions.h>
 #include <velodyne_pointcloud/point_types.h>
-
+#include <pcl/features/normal_3d.h>
 #include <Eigen/Dense>
 #include <Eigen/Eigenvalues>
 #include <pcl/features/normal_3d_omp.h>
@@ -73,7 +73,8 @@ int main(int argc, char **argv)
     return 0;
 }
 
-void estimate_planarity(/* &pontXYZQWE, R, Cloud */){	
+void estimate_planarity(/* &pontXYZQWE, R, Cloud */)
+{	
   float radius = 1;
   // ut all these in a for leap iterating over every point
   vector<int> pointIdxRadiusSearch;
@@ -113,35 +114,60 @@ void estimate_planarity(/* &pontXYZQWE, R, Cloud */){
 	  	planarity_cloud[iterate].x = searchPoint.x;
 	  	planarity_cloud[iterate].y = searchPoint.y;
 	  	planarity_cloud[iterate].z = searchPoint.z;
-	  	planarity_cloud[iterate]sigma1 = sqrt(abs(eigvec[0]));
-	  	planarity_cloud[iterate]sigma2 = sqrt(abs(eigvec[1]));
-	  	planarity_cloud[iterate]sigma3 = sqrt(abs(eigvec[2])); 
+	  	planarity_cloud[iterate].sigma1 = sqrt(abs(eigvec[0]));
+	  	planarity_cloud[iterate].sigma2 = sqrt(abs(eigvec[1]));
+	  	planarity_cloud[iterate].sigma3 = sqrt(abs(eigvec[2]));
 	  }
 }
 
-double energy(/*pointcloud xyzr */){
-	double J = 0;
-	int B = /* # of beams */;
+float a2d(/*point1,point2*/)
+{
+	auto a2d1 = (point1.sigma2-point1.sigma3)/point1.sigma1;
+	decltype(a2d1) a2d2 = (point2.sigma2-point2.sigma3)/point2.sigma1;
+	decltype(a2d1) ad = max(a2d1,a2d2);
+	return ad
+}
+
+double energy(/*pointcloud xyzr */)
+{
+	//a2d = (sigma2-sigma3)/sigma1;
+	int B = /* # of beams */; // the length of the vector/array should be equal to B
+	vector<PointCloud<PointXYZ>::Ptr, Eigen::aligned_allocator <PointCloud <PointXYZ>::Ptr> > ringClouds(B); // make an array of pointclouds with number of elemnts = number of rings
+	for (int i = 0; i < cloud.size; ++i)
+	{
+		int ring_id = cloud[i].R;
+		cloud[i] -> ringClouds[ring_id].push_back() // the point is appended onto the pointcloud on the i th element of the array.
+	}
+
+	auto J = 0;
 	int N = /* # of neighbouring beams to align each beam to */;
 	// P = pointcloud after extracting the planarity: pointcloud afer passing through the previous function 
 
-		for(bi = 1; b<=B; bi++)
+	for(int bi = 1; b<=B; bi++)
+	{
+		pcl::PointCloud<pcl::Normal>::Ptr normal_Cloud (new pcl::PointCloud<NormalType> ());
+		normalEstimation(normal_Cloud,ringClouds[bi-1]);
+		for(int bj = bi-N; bj<=bi+N;bj++)  // add break clause in this loop
 		{
-			for(bj = bi-N; bj<=bi+N;bj++)  // add break clause in this loop
+			for(auto k = 0; k<= /*number of beams*/; k++)  // i think we should use while loop here
 			{
-				for(k = 0; k<= number of beams; k++)  // i think we should use while loop here
-				{
-					if (abs(pk - mk) > dm)   
-					 {
-					 	J = J + (nk*(pk - mk))^2; ? // nk is surface normal
-					 } 
-				}
+				  int K = 1; //nearest neighbour search
+				  vector<int> pointIdxNKNSearch(K);
+				  vector<float> pointNKNSquaredDistance(K);
+				  if ( kdtree.nearestKSearch (searchPoint, K, pointIdxNKNSearch, pointNKNSquaredDistance) > 0 )
+						{
+							if (pointNKNSquaredDistance[0] < dm)   
+							 {
+							 	J = J + a2d(searchPoint,pointIdxNKNSearch)*(nk*(pointNKNSquaredDistance[0]))^2;  // nk is surface normal nk = normal_Cloud[k]
+							 }
+						}	  
 			}
 		}
-
+	}
 	return J ;
 }
+ 
+void external_calibrator(/* pointcloud, J, &R, &T */)
+	{
 
-// Kd Search
-// 3D centroid
-// eigen calculations
+	}
