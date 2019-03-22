@@ -16,6 +16,7 @@
 #include <pcl/features/normal_3d_omp.h>
 #include <pcl/features/shot_omp.h>
 #include <pcl/features/board.h>
+#include <cmath>
 using Eigen::MatrixXf;
 using Eigen::JacobiSVD;
 using Eigen::VectorXf;
@@ -23,6 +24,7 @@ using Eigen::VectorXf;
 /*std::vector< pcl::PointCloud<pcl::PointXYZ>::Ptr, Eigen::aligned_allocator <pcl::PointCloud <pcl::PointXYZ>::Ptr > > sourceClouds(100);*/
 
 using namespace std;
+using namespace cmath;
 
 namespace planarity{
   struct PointSphere  // defines a  pointcloud that contains x y z, r theta phi and sigma1 sigma2 sigma3
@@ -151,23 +153,14 @@ double energy(/*pointSphere*/)
 
 	for(int bi = 1; b<=B; bi++)
 	{
-		pcl::PointCloud<pcl::Normal>::Ptr normal_Cloud (new pcl::PointCloud<NormalType> ());
-		normalEstimation(normal_Cloud,ringClouds[bi-1]);
 		for(int bj = bi-N; bj<=bi+N;bj++)  // add break clause in this loop
 		{
 			for(auto k = 0; k<= /*number of beams*/; k++)  // i think we should use while loop here
 			{
-				  int K = 1; //nearest neighbour search
-				  vector<int> pointIdxNKNSearch(K);
-				  vector<float> pointNKNSquaredDistance(K);
-				  if ( kdtree.nearestKSearch (searchPoint, K, pointIdxNKNSearch, pointNKNSquaredDistance) > 0 )
-						{
-							if (pointNKNSquaredDistance[0] < dm)   
-							 {
-							 	Jn = Jn + a2d(searchPoint,pointIdxNKNSearch)*(nk*(pointNKNSquaredDistance[0]))^2;  // nk is surface normal nk = normal_Cloud[k]
-							 	Jd = Jd + a2d(searchPoint,pointIdxNKNSearch);
-							 }
-						}	  
+				auto dk = ((ringClouds[bi][k].r)*tan(abs(ringClouds[bi][k].phi-ringClouds[bj][k].phi))     //we assume that the matrix is the the  
+									*(ringClouds[bj][k].r)*tan(abs(ringClouds[bi][k].phi-ringClouds[bj][k].phi)));	//already transformed matix ie it is already pk
+				Jn = Jn + a2d()*dk^2;  // nk is surface normal nk = normal_Cloud[k]
+				Jd = Jd + a2d();	  
 			}
 		}
 	}
