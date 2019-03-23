@@ -51,7 +51,7 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(clustering::PointXYZIRL,
                                   (float, sigma2, sigma2)
                                   (float, sigma3, sigma3))
 
-#define PlanarityPointXYZQWE planarity::PointXYZQWE
+#define PlanarityPointXYZQWE planarity::PointSphere
 
 
 class lidar_calibrator{
@@ -82,7 +82,10 @@ int main(int argc, char **argv)
 
 void estimate_planarity(/* &pointSphere, R, Cloud */)
 {	
-  float radius = 1;
+	pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;
+  kdtree.setInputCloud (cloud);
+  
+	float radius = 1;
   // ut all these in a for leap iterating over every point
   vector<int> pointIdxRadiusSearch;
   vector<float> pointRadiusSquaredDistance;
@@ -94,7 +97,7 @@ void estimate_planarity(/* &pointSphere, R, Cloud */)
 	    if ( kdtree.radiusSearch (searchPoint, radius, pointIdxRadiusSearch, pointRadiusSquaredDistance) > 0 )
 	  {
 	    for (size_t i = 0; i < pointIdxRadiusSearch.size (); ++i)
-	    	PointXYZ point;
+	    	PointXYZ Sphere;
 
 	      point.x = cloud->points[ pointIdxRadiusSearch[i] ].x ;
 	      point.y = cloud->points[ pointIdxRadiusSearch[i] ].y ;
@@ -127,9 +130,59 @@ void estimate_planarity(/* &pointSphere, R, Cloud */)
 	  }
 }
 
-double a2d(/*point1,point2*/)
+void estimate_planarity_single(/* &pointSphere, R, Cloud,*/ PointSphere rPoint )
+{	
+	pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;
+  kdtree.setInputCloud (cloud);
+	
+  float radius = 1;
+  // ut all these in a for leap iterating over every point
+  vector<int> pointIdxRadiusSearch;
+  vector<float> pointRadiusSquaredDistance;
+  pcl::PointCloud<PointXYZ> SearchPoint;
+	SearchPoint.x = rPoint.x;
+	SearchPoint.y = rPoint.y;
+	SearchPoint.z = rPoint.z;
+  int point_number;
+		if ( kdtree.radiusSearch (searchPoint, radius, pointIdxRadiusSearch, pointRadiusSquaredDistance) > 0 )
+	{
+		for (size_t i = 0; i < pointIdxRadiusSearch.size (); ++i)
+			PointSphere point;
+
+			point.x = cloud->points[ pointIdxRadiusSearch[i] ].x ;
+			point.y = cloud->points[ pointIdxRadiusSearch[i] ].y ;
+			point.z = cloud->points[ pointIdxRadiusSearch[i] ].z ;
+			SearchPoint.push_back(point);
+	}
+		rSearchPoint.push_back(searchPoint);
+
+		pcl::compute3DCentroid(*rSearchPoint, centroid); // check this function
+		// define matrix M = (x1 - cenroid ..... xn - centroid)
+		n = rSearchPoint.size();
+		Eigen::Vector3f M;
+		for( i = 0; i<=n;i++){
+			M.push_back (rSearchPoint[i] - centroid);
+		}
+		
+		Eigen::Matrix3f lambda;
+		// M'M/n = RyR'
+
+		lambda = (R.inverse()*M.transpose()*M*(R.transpose()).inverse())/n;  // lambda is supposed to be a digonal matrix
+		Eigen::Vector3d eigvec = lambda.diagonal();
+		sort(eigvec.data(),eigvec.data()+eigvec.size());  //sorting in descnding order
+		// adding all thesse values onto a pointcloud, the one we previously defined
+		rpoint.x = searchPoint.x;
+		rpoint.y = searchPoint.y;
+		rpoint.z = searchPoint.z;
+		rpoint.sigma1 = sqrt(abs(eigvec[0]));
+		rpoint.sigma2 = sqrt(abs(eigvec[1]));
+		rpoint.sigma3 = sqrt(abs(eigvec[2]));
+}
+
+double a2d(/*point1(p),point2(m)*/)
 {
 	auto a2d1 = (point1.sigma2-point1.sigma3)/point1.sigma1;
+	estimate_planarity_single(/*entire point cloud*/, point2)
 	decltype(a2d1) a2d2 = (point2.sigma2-point2.sigma3)/point2.sigma1;
 	decltype(a2d1) ad = max(a2d1,a2d2);
 	return ad
@@ -139,7 +192,7 @@ double energy(/*pointSphere*/)
 {
 	//a2d = (sigma2-sigma3)/sigma1;
 	int B = 64; /* # of beams */; // the length of the vector/array should be equal to B
-	vector<PointCloud<PointXYZ>::Ptr, Eigen::aligned_allocator <PointCloud <PointXYZ>::Ptr> > ringClouds(B); // make an array of pointclouds with number of elemnts = number of rings
+	vector<PointCloud<PointSphere>::Ptr, Eigen::aligned_allocator <PointCloud <PointSphere>::Ptr> > ringClouds(B); // make an array of pointclouds with number of elemnts = number of rings
 	for (int i = 0; i < cloud.size; ++i)
 	{
 		int ring_id = cloud[i].R;
@@ -152,15 +205,33 @@ double energy(/*pointSphere*/)
 	// P = pointcloud after extracting the planarity: pointcloud afer passing through the previous function 
 
 	for(int bi = 1; b<=B; bi++)
-	{
+	{	
+		pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;
+		kdtree.setInputCloud (rinClouds[bi]);
 		for(int bj = bi-N; bj<=bi+N;bj++)  // add break clause in this loop
 		{
 			for(auto k = 0; k<= /*number of beams*/; k++)  // i think we should use while loop here
 			{
-				auto dk = ((ringClouds[bi][k].r)*tan(abs(ringClouds[bi][k].phi-ringClouds[bj][k].phi))     //we assume that the matrix is the the  
-									*(ringClouds[bj][k].r)*tan(abs(ringClouds[bi][k].phi-ringClouds[bj][k].phi)));	//already transformed matix ie it is already pk
-				Jn = Jn + a2d()*dk^2;  // nk is surface normal nk = normal_Cloud[k]
-				Jd = Jd + a2d();	  
+				int K = 1;
+				vector<int> mk(K);
+				vector<float> pointNKNSquaredDistance(K);
+				
+				PointSphere pk;
+				pk.phi = ringClouds[bi][1].phi;
+				pk.r = ringClouds[bj][k].r*(sin(abs(ringClouds[bi][1].phi-ringClouds[bj][1].phi)));
+				pk.theta = ringClouds[bj][k].theta
+				pk.x = ringClouds[bj][k].r*cos(ringClouds[bj][k].theta)*cos(ringClouds[bi][1].phi);
+				pk.y = -ringClouds[bj][k].r*sin(ringClouds[bj][k].theta)*cos(ringClouds[bi][1].phi);
+				pk.z = ringClouds[bj][k].r*sin(ringClouds[bi][1].phi);
+				
+				if ( kdtree.nearestKSearch (pk, K, mk, pointNKNSquaredDistance) > 0 )
+				{
+					if (pointNKNSquaredDistance[0] < dm)   // pointNKNsSquareDistance is dk/nk
+					{
+					Jn = Jn + a2d(pk,mk[0])*((ringClouds[bi][k].r) * tan(abs(ringClouds[bi][k].phi-ringClouds[bj][k].phi)) * (pointNKNSquaredDistance[0]))^2;
+					Jd = Jd + a2d(pk,mk[0]);
+					}
+				}  
 			}
 		}
 	}
