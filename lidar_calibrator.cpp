@@ -236,4 +236,102 @@ double energy(/*pointSphere*/)
 		}
 	}
 	return Jn/Jd ;
+void optimization(//*  Sensorpc point cloud*//,const EigenBase<Derived>& R, const EigenBase<Derived>& T) //find hyperparameters and return final point cloud in global reference frame
+	{i=0;
+	if (i==0){
+	Eigen::MatrixXf R(3,1)=Eigen:: EMatrixnf::Random(3,1);
+	Eigen::MatrixXf T(3,1)=Eigen::Matrixnf::Random(3,1);}// intialise randomly R AND T
+	d1 = transformMatrix(Sensorpc,R,T);//returns value of energy function at corresponding R,T,sensorpc
+	Cn=0; Dn=0;
+	for(int bj =0; bj<=32;bj++)  // add break clause in this loop
+		{
+			for (int o = o-N; o<=o+N;o++){
+			for(auto k = 0; k<= /*number of points*/; k++)  // i think we should use while loop here
+			{
+				Eigen::MatrixXf C(6,1)=Eigen::MatrixXf::Random(6,1);
+				Eigen::MatrixXf B(3,1)=Eigen::MatrixXf::Zero(3,1); B(0,0)=1.0;
+				Eigen::MatrixXf V(3,1)=Eigen::MatrixXf::Zero(3,1); V(1,0)=1.0;
+				Eigen::MatrixXf N(3,1)=Eigen::MatrixXf::Zero(3,1);N(2,0)=1.0;
+				//include n 
+
+				// include Rnav and Tnav
+
+				C(0,0)= (n[bj].transpose()).cwiseProduct((Rnav(Sensorpc[bj][k])-Rnav(m[o][k])).cwiseProduct(B)); 
+				C(1,0)= (n[bj].transpose()).cwiseProduct((Rnav(Sensorpc[bj][k])-Rnav(m[o][k])).cwiseProduct(V));
+				C(2,0)= (n[bj].transpose()).cwiseProduct((Rnav(Sensorpc[bj][k])-Rnav(m[o][k])).cwiseProduct(N));
+				B(0,0)=R(0,0); V(1,0)=R(1,0); N(2,0)=R(2,0);
+				//include m in the code
+
+				C(3,0)=(n[bj].transpose()*((Rnav(Sensorpc[bj][k])*B).cwiseProduct(p[bj][k])-(Rnav(m[o][k])*B).cwiseProduct(m[o][k])));
+				C(4,0)=(n[bj].transpose()*((Rnav(Sensorpc[bj][k])*V).cwiseProduct(p[bj][k])-(Rnav(m[o][k])*V).cwiseProduct(m[o][k])));
+				C(5,0)=(n[bj].transpose()*((Rnav(Sensorpc[bj][k])*N).cwiseProduct(p[bj][k])-(Rnav(m[o][k])*N).cwiseProduct(m[o][k])));
+				Eigen::MatrixXf D(3,1)= Eigen::MatrixXf::Random(3,1);
+				D(0,0)= Tnav(Sensorpc[bj[k]])-Tnav(m[j]);
+				D(1,0)=Rnav(Sensorpc[bj][k])*(R.cwiseProduct(p[bj][k])+T);
+				D(2,0)=Rnav(Sensorpc[o][k])*(R.cwiseProduct(m[o][k])+T);
+				//include W
+
+					Cn= Cn + W*(C*(C.transpose())); //to do inclution of w
+					Dn= Dn + W*D*C;
+					}  }
+			}//finds dx,dy,dz,dalpha,dbeta,dgama
+	 Eigen::MatrixXf dx(6,1);
+	 dx = C.inverse()*V;
+	Eigen::MatrixXf G(3,1)= Eigen::Zero(3,1);
+	for(int c=0;c<3;c++){
+		G(c,0)=R(c,0);
+		R= R + G*dx(c+3,0);
+		G(c,0)=T(c,0);
+		T= T+ G*dx(c,0);
+		G(c,0)=0;
+		}// update R and T 
+	d2= transformMatrix(Sensorpc,R,T)
+	if (d2-d1>(-1*h) and d2-d1<h){
+
+			return;
+		}
+
+	else{
+ 		optimization(ptr,R,T);
+	}
+
+	i=i+1;}//recursion condition
+
+
+int  transformMatrix(//*  Sensorpc point cloud*//,const EigenBase<Derived>& R, const EigenBase<Derived>& T)//converts x,y,z from sensor to global reference plane and returns value of energy function
+{
+	pcl::PointCloud<PointXYZ> globalpc;
+
+	for(int bj =0; bj<=32;bj++)  // add break clause in this loop
+		{
+			for (int o = o-N; o<=o+N;o++){
+			for(auto k = 0; k<= /*number of beams*/; k++)  // i think we should use while loop here
+			{
+				Eigen::MatrixXf Z(3,1);Eigen::MatrixXf Y(3,1);
+				Z(0,0)= Sensorpc[bj][k].x; 
+				Z(1,0)= Sensorpc[bj][k].y;
+				Z(1,1)= Sensorpc[bj][k].z;
+				Y(0,0)=	Sensorpc[o][k].x;
+				Y(1,0)=Sensorpc[o][k].y;
+				Y(1,1)=Sensorpc[o][k].z;
+				//include m(ptr) and m1(globalpc)
+
+				// include Rnav and Tnav
+
+
+				Z = Rnav(ptr[bj][k])*(R.cwiseProduct(Z)+T)+Tnav(ptr[bj][k]);
+				Y =Rnav(m[o][k])*(R.cwiseProduct(Y)+T)+Tnav(m[o][k]);
+				globalpc[bj][k].x= Z(0,0);
+				globalpc[bj][k].y= Z(1,0);
+				globalpc[bj][k].z= Z(2,0);
+				m1[o][k].x= Y(0,0);
+				m1[o][k].y= Y(1,0);
+				m1[o][k].z= Y(2,0);
+			}  }
+			}
+		d= energy(globalpc);
+		return d
+
+}
+
 }
