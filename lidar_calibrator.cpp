@@ -26,7 +26,7 @@ using Eigen::VectorXf;
 using namespace std;
 using namespace cmath;
 
-namespace planarity{
+namespace calibrator{
   struct PointSphere  // defines a  pointcloud that contains x y z, r theta phi and sigma1 sigma2 sigma3
   {
     PCL_ADD_POINT4D;
@@ -40,7 +40,7 @@ namespace planarity{
   } EIGEN_ALIGN16;
 };
 
-POINT_CLOUD_REGISTER_POINT_STRUCT(clustering::PointXYZIRL,
+POINT_CLOUD_REGISTER_POINT_STRUCT(clustering::PointSphere,
                                   (float, x, x)
                                   (float, y, y)
                                   (float, z, z)
@@ -49,9 +49,11 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(clustering::PointXYZIRL,
                                   (float, phi, phi)
                                   (float, sigma1, sigma1)
                                   (float, sigma2, sigma2)
-                                  (float, sigma3, sigma3))
+                                  (float, sigma3, sigma3)
+                                  (int, ring, ring)
+                                  )
 
-#define PlanarityPointXYZQWE planarity::PointSphere
+#define PointSphere clustering::PointSphere
 
 
 class lidar_calibrator{
@@ -80,7 +82,7 @@ int main(int argc, char **argv)
     return 0;
 }
 
-void estimate_planarity(/* &pointSphere, R, Cloud */)
+void lidar_calibrator::estimate_planarity(/* &pointSphere, R, Cloud */)
 {	
 	pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;
   kdtree.setInputCloud (cloud);
@@ -130,7 +132,7 @@ void estimate_planarity(/* &pointSphere, R, Cloud */)
 	  }
 }
 
-void estimate_planarity_single(/* &pointSphere, R, Cloud,*/ PointSphere rPoint )
+void lidar_calibrator::estimate_planarity_single(/* &pointSphere, R, Cloud,*/ PointSphere rPoint )
 {	
 	pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;
   kdtree.setInputCloud (cloud);
@@ -179,7 +181,7 @@ void estimate_planarity_single(/* &pointSphere, R, Cloud,*/ PointSphere rPoint )
 		rpoint.sigma3 = sqrt(abs(eigvec[2]));
 }
 
-double a2d(/*point1(p),point2(m)*/)
+double lidar_calibrator::a2d(/*point1(p),point2(m)*/)
 {
 	auto a2d1 = (point1.sigma2-point1.sigma3)/point1.sigma1;
 	estimate_planarity_single(/*entire point cloud*/, point2)
@@ -188,10 +190,9 @@ double a2d(/*point1(p),point2(m)*/)
 	return ad
 }
 
-double energy(/*pointSphere*/)
+double lidar_calibrator::energy(/*pointSphere*/)
 {
 	//a2d = (sigma2-sigma3)/sigma1;
-	int B = 64; /* # of beams */; // the length of the vector/array should be equal to B
 	vector<PointCloud<PointSphere>::Ptr, Eigen::aligned_allocator <PointCloud <PointSphere>::Ptr> > ringClouds(B); // make an array of pointclouds with number of elemnts = number of rings
 	for (int i = 0; i < cloud.size; ++i)
 	{
@@ -204,13 +205,13 @@ double energy(/*pointSphere*/)
 	int N = 2;/* # of neighbouring beams to align each beam to */
 	// P = pointcloud after extracting the planarity: pointcloud afer passing through the previous function 
 
-	for(int bi = 1; b<=B; bi++)
+	for(int bi = 1; b<=64; bi++)
 	{	
 		pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;
 		kdtree.setInputCloud (rinClouds[bi]);
 		for(int bj = bi-N; bj<=bi+N;bj++)  // add break clause in this loop
 		{
-			for(auto k = 0; k<= /*number of beams*/; k++)  // i think we should use while loop here
+			for(auto k = 0; k <= ringClouds[bj].size(); k++)
 			{
 				int K = 1;
 				vector<int> mk(K);
@@ -228,24 +229,25 @@ double energy(/*pointSphere*/)
 				{
 					if (pointNKNSquaredDistance[0] < dm)   // pointNKNsSquareDistance is dk/nk
 					{
-					Jn = Jn + a2d(pk,mk[0])*((ringClouds[bi][k].r) * tan(abs(ringClouds[bi][k].phi-ringClouds[bj][k].phi)) * (pointNKNSquaredDistance[0]))^2;
-					Jd = Jd + a2d(pk,mk[0]);
+						Jn = Jn + a2d(pk,ringClouds[bi][mk[0]])*((ringClouds[bi][k].r) * tan(abs(ringClouds[bi][k].phi-ringClouds[bj][k].phi)) * (pointNKNSquaredDistance[0]))^2;
+						Jd = Jd + a2d(pk,ringClouds[bi][mk[0]]);
 					}
 				}  
 			}
 		}
 	}
 	return Jn/Jd ;
-void optimization(//*  Sensorpc point cloud*//,const EigenBase<Derived>& R, const EigenBase<Derived>& T) //find hyperparameters and return final point cloud in global reference frame
+}
+void lidar_calibrator::optimization(/*  Sensorpc point cloud,const EigenBase<Derived>& R, const EigenBase<Derived>& T) //find hyperparameters and return final point cloud in global reference frame*/)
 	{i=0;
 	if (i==0){
 	Eigen::MatrixXf R(3,1)=Eigen:: EMatrixnf::Random(3,1);
 	Eigen::MatrixXf T(3,1)=Eigen::Matrixnf::Random(3,1);}// intialise randomly R AND T
 	d1 = transformMatrix(Sensorpc,R,T);//returns value of energy function at corresponding R,T,sensorpc
 	Cn=0; Dn=0;
-	for(int bj =0; bj<=32;bj++)  // add break clause in this loop
+	for(int bi =0; bi<=64; bi++)  // add break clause in this loop
 		{
-			for (int o = o-N; o<=o+N;o++){
+			for (int bj = bi-N; bj<=bi+N;bj++){
 			for(auto k = 0; k<= /*number of points*/; k++)  // i think we should use while loop here
 			{
 				Eigen::MatrixXf C(6,1)=Eigen::MatrixXf::Random(6,1);
@@ -298,40 +300,72 @@ void optimization(//*  Sensorpc point cloud*//,const EigenBase<Derived>& R, cons
 	i=i+1;}//recursion condition
 
 
-int  transformMatrix(//*  Sensorpc point cloud*//,const EigenBase<Derived>& R, const EigenBase<Derived>& T)//converts x,y,z from sensor to global reference plane and returns value of energy function
-{
-	pcl::PointCloud<PointXYZ> globalpc;
+int  lidar_calibrator::transformMatrix(/*SensorPC point cloud*/,const EigenBase<Derived>& R, const EigenBase<Derived>& T)
+//converts x,y,z from sensor to global reference plane and returns value of energy function
+{	
+	vector<PointCloud<PointSphere>::Ptr, Eigen::aligned_allocator <PointCloud <PointSphere>::Ptr> > ringClouds(B); // make an array of pointclouds with number of elemnts = number of rings
+	for (int i = 0; i < cloud.size; ++i)
+	{
+		int ring_id = SensorPC[i].R;
+		SensorPC[i] -> ringClouds[ring_id].push_back() // the point is appended onto the pointcloud on the i th element of the array.
+	}
+	
+	pcl::PointCloud<PointSphere> GlobalPC;
+	N = 2;
+	
+	for(int bi =0; bi<=64; bi++)  // add break clause in this loop
+	{
+		pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;
+		kdtree.setInputCloud (rinClouds[bi]);
 
-	for(int bj =0; bj<=32;bj++)  // add break clause in this loop
+		for (int bj = bi-N; bj<=bi+N;bj++)
 		{
-			for (int o = o-N; o<=o+N;o++){
-			for(auto k = 0; k<= /*number of beams*/; k++)  // i think we should use while loop here
+			for(auto k = 0; k<= ringClouds[bj].size(); k++)
 			{
 				Eigen::MatrixXf Z(3,1);Eigen::MatrixXf Y(3,1);
-				Z(0,0)= Sensorpc[bj][k].x; 
-				Z(1,0)= Sensorpc[bj][k].y;
-				Z(1,1)= Sensorpc[bj][k].z;
-				Y(0,0)=	Sensorpc[o][k].x;
-				Y(1,0)=Sensorpc[o][k].y;
-				Y(1,1)=Sensorpc[o][k].z;
+				Z(0,0)= ringClouds[bi][k].x; 
+				Z(1,0)= ringClouds[bi][k].y;
+				Z(1,1)= ringClouds[bi][k].z;
+				Y(0,0)=	ringClouds[bj][k].x;
+				Y(1,0)= ringClouds[bj][k].y;
+				Y(1,1)= ringClouds[bj][k].z;
 				//include m(ptr) and m1(globalpc)
-
+				int K = 1;
+				vector<int> mk(K);
+				vector<float> pointNKNSquaredDistance(K);
+				
+				PointSphere pk;
+				pk.phi = ringClouds[bi][1].phi;
+				pk.r = ringClouds[bj][k].r*(sin(abs(ringClouds[bi][1].phi-ringClouds[bj][1].phi)));
+				pk.theta = ringClouds[bj][k].theta
+				pk.x = ringClouds[bj][k].r*cos(ringClouds[bj][k].theta)*cos(ringClouds[bi][1].phi);
+				pk.y = -ringClouds[bj][k].r*sin(ringClouds[bj][k].theta)*cos(ringClouds[bi][1].phi);
+				pk.z = ringClouds[bj][k].r*sin(ringClouds[bi][1].phi);
+				
+				if ( kdtree.nearestKSearch (pk, K, mk, pointNKNSquaredDistance) > 0 )
+				{					
 				// include Rnav and Tnav
+				Z = Rnav(pk[0])*(R.cwiseProduct(Z)+T)+Tnav(pk[0]);
+				Y = Rnav(ringClouds[bi][mk])*(R.cwiseProduct(Y)+T)+Tnav(ringClouds[bi][mk]);
+				pcl::PointCloud<PointSphere> pointtemp; 
+				pointtemp.x = Z(0,0);
+				pointtemp.y = Z(1,0);
+				pointtemp.z = Z(2,0);
+				pointtemp.r = 
+				pointtemp.theta = 
+				pointtemp.phi = 
+				pointtemp.ring = bj;
 
+				GlobalPC.pushback(pointtemp);
 
-				Z = Rnav(ptr[bj][k])*(R.cwiseProduct(Z)+T)+Tnav(ptr[bj][k]);
-				Y =Rnav(m[o][k])*(R.cwiseProduct(Y)+T)+Tnav(m[o][k]);
-				globalpc[bj][k].x= Z(0,0);
-				globalpc[bj][k].y= Z(1,0);
-				globalpc[bj][k].z= Z(2,0);
-				m1[o][k].x= Y(0,0);
-				m1[o][k].y= Y(1,0);
-				m1[o][k].z= Y(2,0);
-			}  }
-			}
-		d= energy(globalpc);
-		return d
-
+				m1[bj][k].x= Y(0,0);
+				m1[bj][k].y= Y(1,0);
+				m1[bj][k].z= Y(2,0);
+				}  
+			}  
+		}
+	}
+	d= energy(globalpc);
+	return d
 }
 
-}
