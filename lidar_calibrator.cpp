@@ -210,7 +210,7 @@ double lidar_calibrator::energy(/*pointSphere*/)
 		pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;
 		kdtree.setInputCloud (rinClouds[bi]);
 		for(int bj = bi-N; bj<=bi+N;bj++)  // add break clause in this loop
-		{
+		{	if(bj<1 or bj<64)continue;
 			for(auto k = 0; k <= ringClouds[bj].size(); k++)
 			{
 				int K = 1;
@@ -245,11 +245,12 @@ void lidar_calibrator::optimization(/*  Sensorpc point cloud,const EigenBase<Der
 	Eigen::MatrixXf T(3,1)=Eigen::Matrixnf::Random(3,1);}// intialise randomly R AND T
 	d1 = transformMatrix(Sensorpc,R,T);//returns value of energy function at corresponding R,T,sensorpc
 	Cn=0; Dn=0;
-	for(int bi =0; bi<=64; bi++)  // add break clause in this loop
+	for(int bi =0; bi<64; bi++)  // add break clause in this loop
 		{
 			for (int bj = bi-N; bj<=bi+N;bj++){
+				if(bj<0 or bj>63)continue;
 			for(auto k = 0; k<= /*number of points*/; k++)  // i think we should use while loop here
-			{
+			{	
 				Eigen::MatrixXf C(6,1)=Eigen::MatrixXf::Random(6,1);
 				Eigen::MatrixXf B(3,1)=Eigen::MatrixXf::Zero(3,1); B(0,0)=1.0;
 				Eigen::MatrixXf V(3,1)=Eigen::MatrixXf::Zero(3,1); V(1,0)=1.0;
@@ -358,9 +359,7 @@ int  lidar_calibrator::transformMatrix(/*SensorPC point cloud*/,const EigenBase<
 
 				GlobalPC.pushback(pointtemp);
 
-				m1[bj][k].x= Y(0,0);
-				m1[bj][k].y= Y(1,0);
-				m1[bj][k].z= Y(2,0);
+				
 				}  
 			}  
 		}
