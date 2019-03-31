@@ -354,7 +354,7 @@ int  lidar_calibrator::transformMatrix(/*SensorPC point cloud*/,const EigenBase<
 				pointtemp.y = Z(1,0);
 				pointtemp.z = Z(2,0);
 				pointtemp.r = sqrt(pow(Z(0,0),2)+pow(Z(1,0),2)+pow(Z(2,0),2));
-				pointtemp.theta = atan((sqrt(pow(Z(0,0),2)+pow(Z(1,0),2))/Z(2,0));
+				pointtemp.theta = atan((sqrt(pow(Z(0,0),2)+pow(Z(1,0),2))/Z(2,0))-90;
 				pointtemp.phi = atan(Z(1,0)/Z(0,0));
 				pointtemp.ring = bj;
 
