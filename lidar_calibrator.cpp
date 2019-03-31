@@ -133,7 +133,7 @@ void lidar_calibrator::estimate_planarity(/* &pointSphere, R, Cloud */)
 	  }
 }
 
-void lidar_calibrator::estimate_planarity_single(/* &pointSphere, R, Cloud,*/ PointSphere rPoint )
+void lidar_calibrator::estimate_planarity_single(const pcl::PointCloud& cloud, R, Cloud,*/ PointSphere rPoint )
 {	
 	pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;
   kdtree.setInputCloud (cloud);
@@ -239,7 +239,7 @@ double lidar_calibrator::energy(/*pointSphere*/)
 	}
 	return Jn/Jd ;
 }
-void lidar_calibrator::optimization(/*  Sensorpc point cloud,const EigenBase<Derived>& R, const EigenBase<Derived>& T) //find hyperparameters and return final point cloud in global reference frame*/)
+void lidar_calibrator::optimization(const pcl::PointCloud& cloud,const EigenBase<Derived>& R, const EigenBase<Derived>& T) //find hyperparameters and return final point cloud in global reference frame*/)
 	{i=0;
 	if (i==0){
 	Eigen::MatrixXf R(3,1)=Eigen:: EMatrixnf::Random(3,1);
@@ -302,7 +302,7 @@ void lidar_calibrator::optimization(/*  Sensorpc point cloud,const EigenBase<Der
 	i=i+1;}//recursion condition
 
 
-int  lidar_calibrator::transformMatrix(/*SensorPC point cloud*/,const EigenBase<Derived>& R, const EigenBase<Derived>& T)
+int  lidar_calibrator::transformMatrix(const pcl::PointCloud& cloud,const EigenBase<Derived>& R, const EigenBase<Derived>& T)
 //converts x,y,z from sensor to global reference plane and returns value of energy function
 {	
 	vector<PointCloud<PointSphere>::Ptr, Eigen::aligned_allocator <PointCloud <PointSphere>::Ptr> > ringClouds(B); // make an array of pointclouds with number of elemnts = number of rings
@@ -367,5 +367,10 @@ int  lidar_calibrator::transformMatrix(/*SensorPC point cloud*/,const EigenBase<
 	}
 	d= energy(globalpc);
 	return d
+}
+void callback (const pcl::PointCloud& cloud) 
+{
+ input = cloud; // copy the variable that the callback passes in to you class variable (attribute) input
+ i=i+1;
 }
 
