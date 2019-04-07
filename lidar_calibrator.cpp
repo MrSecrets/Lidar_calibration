@@ -60,17 +60,21 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(clustering::PointSphere,
 class lidar_calibrator{
 	public:
 		lidar_calibrator(){
-			points_sub = nh.subscribe("/velodyne_points", 1, &plane_fit::velodyne_callback,this);
+			points_sub = nh.subscribe("/ouster_points", 1, &lidar_calibrator::lidar_callback,this);
 		}
 	private:
 		ros::NodeHandle nh;
 		ros::Subscriber points_sub;
 		ros::Publisher sigma_pub;
 		
-		void velodyne_callback(const sensor_msgs::PointCloud2ConstPtr& laserCloudMsg){
+		void lidar_callback(const pcl::PointCloud& cloud);
+		void estimate_planarity();
+		void estimate_planarity_single();
+		double a2d();
+		double energy();
+		double optimization();
+		double transformMatrix();
 
-		}
-		void estimate_planarity(void);
 };
 
 
@@ -133,7 +137,7 @@ void lidar_calibrator::estimate_planarity(/* &pointSphere, R, Cloud */)
 	  }
 }
 
-void lidar_calibrator::estimate_planarity_single(const pcl::PointCloud& cloud, R, Cloud,*/ PointSphere rPoint )
+void lidar_calibrator::estimate_planarity_single(const pcl::PointCloud& cloud, R, Cloud, PointSphere rPoint )
 {	
 	pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;
   kdtree.setInputCloud (cloud);
@@ -240,7 +244,8 @@ double lidar_calibrator::energy(/*pointSphere*/)
 	return Jn/Jd ;
 }
 void lidar_calibrator::optimization(const pcl::PointCloud& cloud,const EigenBase<Derived>& R, const EigenBase<Derived>& T) //find hyperparameters and return final point cloud in global reference frame*/)
-	{i=0;
+{
+	i=0;
 	if (i==0){
 	Eigen::MatrixXf R(3,1)=Eigen:: EMatrixnf::Random(3,1);
 	Eigen::MatrixXf T(3,1)=Eigen::Matrixnf::Random(3,1);}// intialise randomly R AND T
@@ -278,38 +283,39 @@ void lidar_calibrator::optimization(const pcl::PointCloud& cloud,const EigenBase
 					Cn= Cn + W*(C*(C.transpose())); //to do inclution of w
 					Dn= Dn + W*D*C;
 					}  }
-			}//finds dx,dy,dz,dalpha,dbeta,dgama
-	 Eigen::MatrixXf dx(6,1);
-	 dx = C.inverse()*V;
-	Eigen::MatrixXf G(3,1)= Eigen::Zero(3,1);
-	for(int c=0;c<3;c++){
-		G(c,0)=R(c,0);
-		R= R + G*dx(c+3,0);
-		G(c,0)=T(c,0);
-		T= T+ G*dx(c,0);
-		G(c,0)=0;
-		}// update R and T 
-	d2= transformMatrix(Sensorpc,R,T)
-	if (d2-d1>(-1*h) and d2-d1<h){
+				}//finds dx,dy,dz,dalpha,dbeta,dgama
+		 Eigen::MatrixXf dx(6,1);
+		 dx = C.inverse()*V;
+		Eigen::MatrixXf G(3,1)= Eigen::Zero(3,1);
+		for(int c=0;c<3;c++){
+			G(c,0)=R(c,0);
+			R= R + G*dx(c+3,0);
+			G(c,0)=T(c,0);
+			T= T+ G*dx(c,0);
+			G(c,0)=0;
+			}// update R and T 
+		d2= transformMatrix(Sensorpc,R,T)
+		if (d2-d1>(-1*h) and d2-d1<h){
 
-			return;
+				return;
+			}
+
+		else{
+	 		optimization(ptr,R,T);
 		}
 
-	else{
- 		optimization(ptr,R,T);
-	}
-
-	i=i+1;}//recursion condition
+		i=i+1;
+	}//recursion condition
 
 
-int  lidar_calibrator::transformMatrix(const pcl::PointCloud& cloud,const EigenBase<Derived>& R, const EigenBase<Derived>& T)
-//converts x,y,z from sensor to global reference plane and returns value of energy function
-{	
+double lidar_calibrator::transformMatrix(const pcl::PointCloud& cloud,const EigenBase<Derived>& R, const EigenBase<Derived>& T)
+{
+//converts x,y,z from sensor to global reference plane and returns value of energy function	
 	vector<PointCloud<PointSphere>::Ptr, Eigen::aligned_allocator <PointCloud <PointSphere>::Ptr> > ringClouds(B); // make an array of pointclouds with number of elemnts = number of rings
 	for (int i = 0; i < cloud.size; ++i)
 	{
 		int ring_id = SensorPC[i].R;
-		SensorPC[i] -> ringClouds[ring_id].push_back() // the point is appended onto the pointcloud on the i th element of the array.
+		SensorPC[i] -> ringClouds[ring_id].push_back(); // the point is appended onto the pointcloud on the i th element of the array.
 	}
 	
 	pcl::PointCloud<PointSphere> GlobalPC;
@@ -339,38 +345,34 @@ int  lidar_calibrator::transformMatrix(const pcl::PointCloud& cloud,const EigenB
 				PointSphere pk;
 				pk.phi = ringClouds[bi][1].phi;
 				pk.r = ringClouds[bj][k].r*(sin(abs(ringClouds[bi][1].phi-ringClouds[bj][1].phi)));
-				pk.theta = ringClouds[bj][k].theta
+				pk.theta = ringClouds[bj][k].theta;
 				pk.x = ringClouds[bj][k].r*cos(ringClouds[bj][k].theta)*cos(ringClouds[bi][1].phi);
 				pk.y = -ringClouds[bj][k].r*sin(ringClouds[bj][k].theta)*cos(ringClouds[bi][1].phi);
 				pk.z = ringClouds[bj][k].r*sin(ringClouds[bi][1].phi);
 				
 				if ( kdtree.nearestKSearch (pk, K, mk, pointNKNSquaredDistance) > 0 )
-				{					
-				// include Rnav and Tnav
-				Z = Rnav(pk[0])*(R.cwiseProduct(Z)+T)+Tnav(pk[0]);
-				Y = Rnav(ringClouds[bi][mk])*(R.cwiseProduct(Y)+T)+Tnav(ringClouds[bi][mk]);
-				pcl::PointCloud<PointSphere> pointtemp; 
-				pointtemp.x = Z(0,0);
-				pointtemp.y = Z(1,0);
-				pointtemp.z = Z(2,0);
-				pointtemp.r = sqrt(pow(Z(0,0),2)+pow(Z(1,0),2)+pow(Z(2,0),2));
-				pointtemp.theta = atan((sqrt(pow(Z(0,0),2)+pow(Z(1,0),2))/Z(2,0))-90;
-				pointtemp.phi = atan(Z(1,0)/Z(0,0));
-				pointtemp.ring = bj;
+				{	
+					// include Rnav and Tnav
+					Z = Rnav(pk[0])*(R.cwiseProduct(Z)+T)+Tnav(pk[0]);
+					Y = Rnav(ringClouds[bi][mk])*(R.cwiseProduct(Y)+T)+Tnav(ringClouds[bi][mk]);
+					pcl::PointCloud<PointSphere> pointtemp; 
+					pointtemp.x = Z(0,0);
+					pointtemp.y = Z(1,0);
+					pointtemp.z = Z(2,0);
+					pointtemp.r = sqrt(pow(Z(0,0),2)+pow(Z(1,0),2)+pow(Z(2,0),2));
+					pointtemp.theta = atan((sqrt(pow(Z(0,0),2)+pow(Z(1,0),2))/Z(2,0))-90);
+					pointtemp.phi = atan(Z(1,0)/Z(0,0));
+					pointtemp.ring = bj;
 
-				GlobalPC.pushback(pointtemp);
-
-				
+					GlobalPC.pushback(pointtemp);
 				}  
 			}  
 		}
 	}
-	d= energy(globalpc);
-	return d
+	return energy(GlobalPC);
 }
-void callback (const pcl::PointCloud& cloud) 
+void lidar_callback(const pcl::PointCloud& cloud) 
 {
  input = cloud; // copy the variable that the callback passes in to you class variable (attribute) input
- i=i+1;
-}
 
+}
