@@ -262,22 +262,25 @@ void lidar_calibrator::optimization(const pcl::PointCloud& cloud,const EigenBase
 				Eigen::MatrixXf V(3,1)=Eigen::MatrixXf::Zero(3,1); V(1,0)=1.0;
 				Eigen::MatrixXf N(3,1)=Eigen::MatrixXf::Zero(3,1);N(2,0)=1.0;
 				//include n 
-
+				Eigen::MatrixXf B1(3,1)=Eigen::MatrixXf::Zero(3,1); B1(0,0)=R(0,0);
+				Eigen::MatrixXf V1(3,1)=Eigen::MatrixXf::Zero(3,1); V1(1,0)=R(1,0);
+				Eigen::MatrixXf N1(3,1)=Eigen::MatrixXf::Zero(3,1);N1(2,0)=R(2,0);
+				//include n 
 				// include Rnav and Tnav
 
-				C(0,0)= (n[bj].transpose()).cwiseProduct((Rnav(Sensorpc[bj][k])-Rnav(m[o][k])).cwiseProduct(B)); 
-				C(1,0)= (n[bj].transpose()).cwiseProduct((Rnav(Sensorpc[bj][k])-Rnav(m[o][k])).cwiseProduct(V));
-				C(2,0)= (n[bj].transpose()).cwiseProduct((Rnav(Sensorpc[bj][k])-Rnav(m[o][k])).cwiseProduct(N));
+				C(0,0)= (n[bj].transpose()*(B)); 
+				C(1,0)= (n[bj].transpose()*(V));
+				C(2,0)= (n[bj].transpose()*(N));
 				B(0,0)=R(0,0); V(1,0)=R(1,0); N(2,0)=R(2,0);
 				//include m in the code
 
-				C(3,0)=(n[bj].transpose()*((Rnav(Sensorpc[bj][k])*B).cwiseProduct(p[bj][k])-(Rnav(m[o][k])*B).cwiseProduct(m[o][k])));
-				C(4,0)=(n[bj].transpose()*((Rnav(Sensorpc[bj][k])*V).cwiseProduct(p[bj][k])-(Rnav(m[o][k])*V).cwiseProduct(m[o][k])));
-				C(5,0)=(n[bj].transpose()*((Rnav(Sensorpc[bj][k])*N).cwiseProduct(p[bj][k])-(Rnav(m[o][k])*N).cwiseProduct(m[o][k])));
+				C(3,0)=(n[bj].transpose()*(B1.cwiseProduct(p[bj][k])-B1.cwiseProduct(m[o][k])));
+				C(4,0)=(n[bj].transpose()*(V1.cwiseProduct(p[bj][k])-V1.cwiseProduct(m[o][k])));
+				C(5,0)=(n[bj].transpose()*(N1.cwiseProduct(p[bj][k])-N1.cwiseProduct(m[o][k])));
 				Eigen::MatrixXf D(3,1)= Eigen::MatrixXf::Random(3,1);
-				D(0,0)= Tnav(Sensorpc[bj[k]])-Tnav(m[j]);
-				D(1,0)=Rnav(Sensorpc[bj][k])*(R.cwiseProduct(p[bj][k])+T);
-				D(2,0)=Rnav(Sensorpc[o][k])*(R.cwiseProduct(m[o][k])+T);
+				D(0,0)= 0;
+				D(1,0)=(R.cwiseProduct(p[bj][k])+T);
+				D(2,0)=(R.cwiseProduct(m[o][k])+T);
 				//include W
 
 					Cn= Cn + W*(C*(C.transpose())); //to do inclution of w
@@ -353,8 +356,8 @@ double lidar_calibrator::transformMatrix(const pcl::PointCloud& cloud,const Eige
 				if ( kdtree.nearestKSearch (pk, K, mk, pointNKNSquaredDistance) > 0 )
 				{	
 					// include Rnav and Tnav
-					Z = Rnav(pk[0])*(R.cwiseProduct(Z)+T)+Tnav(pk[0]);
-					Y = Rnav(ringClouds[bi][mk])*(R.cwiseProduct(Y)+T)+Tnav(ringClouds[bi][mk]);
+					Z = (R.cwiseProduct(Z)+T);
+					Y = (R.cwiseProduct(Y)+T);
 					pcl::PointCloud<PointSphere> pointtemp; 
 					pointtemp.x = Z(0,0);
 					pointtemp.y = Z(1,0);
