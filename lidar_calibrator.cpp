@@ -1,14 +1,15 @@
+#define PCL_NO_PRECOMPILE
 #include <iostream>
-//#include <home/sine/Downloads/pcl-pcl-1.8.0/gpu/features/include/pcl/gpu/features/features.hpp>
 #include <ros/ros.h>
 #include <sensor_msgs/PointCloud2.h>
-#define PCL_NO_PRECOMPILE
 #include <pcl_ros/point_cloud.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/filters/filter.h>
 #include <pcl/point_types.h>
+#include <pcl/point_cloud.h>
+#include <pcl/io/pcd_io.h>
 #include <pcl/common/centroid.h>
-#include <pcl/ros/conversions.h>
+// #include <pcl/ros/conversions.h>
 #include <velodyne_pointcloud/point_types.h>
 #include <pcl/features/normal_3d.h>
 #include <Eigen/Dense>
@@ -18,43 +19,60 @@
 #include <pcl/features/board.h>
 #include <cmath>
 #include <math.h>  
+
 using Eigen::MatrixXf;
 using Eigen::JacobiSVD;
 using Eigen::VectorXf;
-
-/*std::vector< pcl::PointCloud<pcl::PointXYZ>::Ptr, Eigen::aligned_allocator <pcl::PointCloud <pcl::PointXYZ>::Ptr > > sourceClouds(100);*/
-
 using namespace std;
-using namespace cmath;
 
-namespace calibrator{
+
+template <typename Derived>
+
+struct MyPointType
+{
+  PCL_ADD_POINT4D;                  // preferred way of adding a XYZ+padding
+  float test;
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW   // make sure our new allocators are aligned
+} EIGEN_ALIGN16;                    // enforce SSE padding for correct memory alignment
+
+POINT_CLOUD_REGISTER_POINT_STRUCT (MyPointType,           // here we assume a XYZ + "test" (as fields)
+                                   (float, x, x)
+                                   (float, y, y)
+                                   (float, z, z)
+                                   (float, test, test)
+)
+
+
+// namespace calibrator
+// {
   struct PointSphere  // defines a  pointcloud that contains x y z, r theta phi and sigma1 sigma2 sigma3
   {
     PCL_ADD_POINT4D;
     float r;
     float theta;
     float phi;                    
-    float sigma1;                 
-    float sigma2;                      
-    float sigma3;                     
+    double sigma1;                 
+    double sigma2;                      
+    double sigma3;
+    uint16_t ring;       
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW     
   } EIGEN_ALIGN16;
-};
+// };
 
-POINT_CLOUD_REGISTER_POINT_STRUCT(clustering::PointSphere,
+POINT_CLOUD_REGISTER_POINT_STRUCT(PointSphere,
                                   (float, x, x)
                                   (float, y, y)
                                   (float, z, z)
                                   (float, r,r)
                                   (float, theta, theta)
                                   (float, phi, phi)
-                                  (float, sigma1, sigma1)
-                                  (float, sigma2, sigma2)
-                                  (float, sigma3, sigma3)
-                                  (int, ring, ring)
-                                  )
+                                  (double, sigma1, sigma1)
+                                  (double, sigma2, sigma2)
+                                  (double, sigma3, sigma3)
+                                  (uint16_t, ring, ring)
+                                 )
 
-#define PointSphere clustering::PointSphere
+// #define PointSphere calibrator::PointSphere
 
 
 class lidar_calibrator{
@@ -67,16 +85,15 @@ class lidar_calibrator{
 		ros::Subscriber points_sub;
 		ros::Publisher sigma_pub;
 		
-		void lidar_callback(const pcl::PointCloud& cloud);
-		void estimate_planarity();
-		void estimate_planarity_single();
-		double a2d();
-		double energy();
-		double optimization();
-		double transformMatrix();
+		void lidar_callback(const sensor_msgs::PointCloud2ConstPtr& laserCloudMsg);
+		void estimate_planarity(const pcl::PointCloud<PointSphere>& cloud);
+		void estimate_planarity_single(const pcl::PointCloud<PointSphere>& cloud,const pcl::PointCloud<PointSphere>& rPoint);
+		double a2d(const pcl::PointCloud<PointSphere>& cloud,const pcl::PointCloud<PointSphere>& point1,const pcl::PointCloud<PointSphere>& point2);
+		double energy(const pcl::PointCloud<PointSphere>& cloud);
+		double optimization(const pcl::PointCloud<PointSphere>& SensorPC,const EigenBase<Derived>& R, const EigenBase<Derived>& T);
+		double transformMatrix(const pcl::PointCloud& SensorPC,const EigenBase<Derived>& R, const EigenBase<Derived>& T);
 
 };
-
 
 int main(int argc, char **argv)
 {
@@ -87,7 +104,7 @@ int main(int argc, char **argv)
     return 0;
 }
 
-void lidar_calibrator::estimate_planarity(/* &pointSphere, R, Cloud */)
+void lidar_calibrator::estimate_planarity(const pcl::PointCloud<PointSphere>& cloud)
 {	
 	pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;
   kdtree.setInputCloud (cloud);
@@ -137,7 +154,7 @@ void lidar_calibrator::estimate_planarity(/* &pointSphere, R, Cloud */)
 	  }
 }
 
-void lidar_calibrator::estimate_planarity_single(const pcl::PointCloud& cloud, R, Cloud, PointSphere rPoint )
+void lidar_calibrator::estimate_planarity_single(const pcl::PointCloud<PointSphere>& cloud,const pcl::PointCloud<PointSphere>& rPoint)
 {	
 	pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;
   kdtree.setInputCloud (cloud);
@@ -186,16 +203,16 @@ void lidar_calibrator::estimate_planarity_single(const pcl::PointCloud& cloud, R
 		rpoint.sigma3 = sqrt(abs(eigvec[2]));
 }
 
-double lidar_calibrator::a2d(/*point1(p),point2(m)*/)
+double lidar_calibrator::a2d(const pcl::PointCloud<PointSphere>& cloud,const pcl::PointCloud<PointSphere>& point1,const pcl::PointCloud<PointSphere>& point2)
 {
-	auto a2d1 = (point1.sigma2-point1.sigma3)/point1.sigma1;
-	estimate_planarity_single(/*entire point cloud*/, point2)
-	decltype(a2d1) a2d2 = (point2.sigma2-point2.sigma3)/point2.sigma1;
+	auto a2d1 = (point1[0].sigma2-point1[0].sigma3)/point1[0].sigma1;
+	estimate_planarity_single(cloud, point2)
+	decltype(a2d1) a2d2 = (point2[0].sigma2-point2[0].sigma3)/point2[0].sigma1;
 	decltype(a2d1) ad = max(a2d1,a2d2);
 	return ad
 }
 
-double lidar_calibrator::energy(/*pointSphere*/)
+double lidar_calibrator::energy(const pcl::PointCloud<PointSphere>& cloud)
 {
 	//a2d = (sigma2-sigma3)/sigma1;
 	vector<PointCloud<PointSphere>::Ptr, Eigen::aligned_allocator <PointCloud <PointSphere>::Ptr> > ringClouds(B); // make an array of pointclouds with number of elemnts = number of rings
@@ -243,19 +260,23 @@ double lidar_calibrator::energy(/*pointSphere*/)
 	}
 	return Jn/Jd ;
 }
-void lidar_calibrator::optimization(const pcl::PointCloud& cloud,const EigenBase<Derived>& R, const EigenBase<Derived>& T) //find hyperparameters and return final point cloud in global reference frame*/)
+void lidar_calibrator::optimization(const pcl::PointCloud<PointSphere>& SensorPC,const EigenBase<Derived>& R, const EigenBase<Derived>& T) /*find hyperparameters and return final point cloud in global reference frame*/ 
 {
 	i=0;
-	if (i==0){
-	Eigen::MatrixXf R(3,1)=Eigen:: EMatrixnf::Random(3,1);
-	Eigen::MatrixXf T(3,1)=Eigen::Matrixnf::Random(3,1);}// intialise randomly R AND T
-	d1 = transformMatrix(Sensorpc,R,T);//returns value of energy function at corresponding R,T,sensorpc
+	if (i==0)
+	{
+		Eigen::MatrixXf R(3,1)=Eigen:: EMatrixnf::Random(3,1);
+		Eigen::MatrixXf T(3,1)=Eigen::Matrixnf::Random(3,1);
+	}// intialise randomly R AND T
+	d1 = transformMatrix(SensorPC,R,T);//returns value of energy function at corresponding R,T,SensorPC
 	Cn=0; Dn=0;
 	for(int bi =0; bi<64; bi++)  // add break clause in this loop
+	{
+		for (int bj = bi-N; bj<=bi+N;bj++)
 		{
-			for (int bj = bi-N; bj<=bi+N;bj++){
-				if(bj<0 or bj>63)continue;
-			for(auto k = 0; k<= /*number of points*/; k++)  // i think we should use while loop here
+			if(bj<0 or bj>63)continue;
+			
+			for(auto k = 0; k<= SensorPC.size(); k++)  // i think we should use while loop here
 			{	
 				Eigen::MatrixXf C(6,1)=Eigen::MatrixXf::Random(6,1);
 				Eigen::MatrixXf B(3,1)=Eigen::MatrixXf::Zero(3,1); B(0,0)=1.0;
@@ -283,39 +304,43 @@ void lidar_calibrator::optimization(const pcl::PointCloud& cloud,const EigenBase
 				D(2,0)=(R.cwiseProduct(m[o][k])+T);
 				//include W
 
-					Cn= Cn + W*(C*(C.transpose())); //to do inclution of w
-					Dn= Dn + W*D*C;
-					}  }
-				}//finds dx,dy,dz,dalpha,dbeta,dgama
-		 Eigen::MatrixXf dx(6,1);
-		 dx = C.inverse()*V;
-		Eigen::MatrixXf G(3,1)= Eigen::Zero(3,1);
-		for(int c=0;c<3;c++){
-			G(c,0)=R(c,0);
-			R= R + G*dx(c+3,0);
-			G(c,0)=T(c,0);
-			T= T+ G*dx(c,0);
-			G(c,0)=0;
-			}// update R and T 
-		d2= transformMatrix(Sensorpc,R,T)
-		if (d2-d1>(-1*h) and d2-d1<h){
+				Cn= Cn + W*(C*(C.transpose())); //to do inclution of w
+				Dn= Dn + W*D*C;
+			}  
+		}			
+	}//finds dx,dy,dz,dalpha,dbeta,dgama
+	Eigen::MatrixXf dx(6,1);
+	dx = C.inverse()*V;
+	Eigen::MatrixXf G(3,1) = Eigen::Zero(3,1);
+	
+	for(int c=0;c<3;c++)
+	{
+		G(c,0)=R(c,0);
+		R= R + G*dx(c+3,0);
+		G(c,0)=T(c,0);
+		T= T+ G*dx(c,0);
+		G(c,0)=0;
+	}// update R and T 
+	d2 = transformMatrix(SensorPC,R,T)
+	
+	if (d2-d1>(-1*h) and d2-d1<h)
+	{
+		return;
+	}
 
-				return;
-			}
+	else
+	{
+ 		optimization(ptr,R,T);
+	}
 
-		else{
-	 		optimization(ptr,R,T);
-		}
-
-		i=i+1;
-	}//recursion condition
-
-
-double lidar_calibrator::transformMatrix(const pcl::PointCloud& cloud,const EigenBase<Derived>& R, const EigenBase<Derived>& T)
+	i=i+1;
+}
+	//recursion condition
+double lidar_calibrator::transformMatrix(const pcl::PointCloud& SensorPC,const EigenBase<Derived>& R, const EigenBase<Derived>& T)
 {
 //converts x,y,z from sensor to global reference plane and returns value of energy function	
 	vector<PointCloud<PointSphere>::Ptr, Eigen::aligned_allocator <PointCloud <PointSphere>::Ptr> > ringClouds(B); // make an array of pointclouds with number of elemnts = number of rings
-	for (int i = 0; i < cloud.size; ++i)
+	for (int i = 0; i < SensorPC.size; ++i)
 	{
 		int ring_id = SensorPC[i].R;
 		SensorPC[i] -> ringClouds[ring_id].push_back(); // the point is appended onto the pointcloud on the i th element of the array.
@@ -374,7 +399,7 @@ double lidar_calibrator::transformMatrix(const pcl::PointCloud& cloud,const Eige
 	}
 	return energy(GlobalPC);
 }
-void lidar_callback(const pcl::PointCloud& cloud) 
+void lidar_callback(const sensor_msgs::PointCloud2ConstPtr& laserCloudMsg) 
 {
  input = cloud; // copy the variable that the callback passes in to you class variable (attribute) input
 
